@@ -1,4 +1,4 @@
-// Wire protocol between client and server (JSON over WebSocket, photos over HTTP).
+// Shapes returned by the Supabase RPCs (see supabase/migrations) and the client's action messages.
 
 import type { DurationMin, LatLng, Phase, Role, Settings, TeamMode } from './game.ts';
 
@@ -7,6 +7,7 @@ export interface PlayerView {
   name: string;
   role: Role | null;
   ready: boolean;
+  /** From Realtime presence (true until presence has synced). */
   connected: boolean;
   isHost: boolean;
   captured: boolean;
@@ -20,6 +21,9 @@ export interface PhotoView {
   id: string;
   playerId: string;
   playerName: string;
+  /** Object path in the `drokei-photos` storage bucket. */
+  path: string;
+  /** Public URL, filled in by the client. */
   url: string;
   pos: LatLng | null;
   t: number;
@@ -61,9 +65,8 @@ export interface RoomView {
   result: ResultView | null;
 }
 
+/** Actions a player can take; each maps to one RPC in net.ts. */
 export type ClientMessage =
-  | { type: 'create'; key: string; name: string }
-  | { type: 'join'; key: string; name: string; code: string }
   | { type: 'leave' }
   | { type: 'setRole'; role: Role | null }
   | { type: 'setSettings'; teamMode?: TeamMode; center?: LatLng; radiusM?: number; durationMin?: DurationMin }
@@ -71,22 +74,13 @@ export type ClientMessage =
   | { type: 'start' }
   | { type: 'location'; lat: number; lng: number; acc?: number }
   | { type: 'requestCapture'; runnerId: string }
-  | { type: 'respondCapture'; requestId: string; accept: boolean }
-  | { type: 'ping' };
+  | { type: 'respondCapture'; requestId: string; accept: boolean };
 
-export type ServerMessage =
-  | { type: 'state'; room: RoomView; serverNow: number }
-  | { type: 'left' }
-  | { type: 'error'; message: string }
-  | { type: 'pong'; serverNow: number };
-
-export interface PhotoUploadRequest {
-  code: string;
-  key: string;
-  mission: number;
-  /** data:image/jpeg;base64,... */
-  dataUrl: string;
-  pos: LatLng | null;
+/** Every mutating RPC returns the caller's fresh view. */
+export interface RpcResponse {
+  room: RoomView;
+  serverNow: number;
 }
 
+export const PHOTO_BUCKET = 'drokei-photos';
 export const MAX_PHOTO_BYTES = 3 * 1024 * 1024;
