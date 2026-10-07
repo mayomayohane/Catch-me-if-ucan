@@ -21,7 +21,7 @@ npm run build          # dist/ を Vercel / Netlify / Cloudflare Pages などに
 
 プロジェクト: `catch-me-if-ucan`（東京リージョン, ref `ylsnqgihqulrptgsqkas`）
 
-1. `supabase/migrations/` の SQL を番号順に実行（SQL Editor に貼るか `supabase db push`）。何度実行しても安全です。
+1. `supabase/migrations/` の SQL を番号順に実行（SQL Editor に貼るか `supabase db push`）。何度実行しても安全です。※ `catch-me-if-ucan` プロジェクトには適用済み。
 2. `supabase/tests/smoke.sql` を SQL Editor で実行 → エラーが出なければOK（最後にロールバックするのでデータは残りません）。
 
 ## 仕組み
@@ -67,7 +67,7 @@ npm run build          # dist/ を Vercel / Netlify / Cloudflare Pages などに
 
 ## 既知の制約・次のステップ
 - **バックグラウンド位置取得**: ブラウザは画面オフ中に GPS を止めます。ゲーム中は Wake Lock で画面を点けたままにしていますが、本当のバックグラウンド追跡には Capacitor 等のネイティブラッパーが必要です。
-- **古いデータの掃除**: 終了したルームや写真は自動削除されません。pg_cron で一定期間後に削除するジョブを追加予定。
+- **古いデータの掃除**: ゲームのロジックは行を消さず（退出は `left_at`、確保申請は `resolved_at` で記録）、履歴がすべて残ります。終了したルームや写真を一定期間後に削除するジョブ（pg_cron）は未実装です。
 - **自撮りの公開範囲**: バケットは public（パスは推測不能な UUID）。より厳密にするなら private バケット + 署名付きURL（Edge Function）へ。
 - 地図タイルは OSM 公式サーバー。公開運用時は MapTiler 等への切り替えを推奨。
 - デモ用に `set_settings` の `p_photo_interval_s`（10〜600秒）で自撮り間隔を短縮できます。

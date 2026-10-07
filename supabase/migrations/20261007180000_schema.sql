@@ -10,6 +10,8 @@
 --  * Each mutation sends a Realtime broadcast "changed" on the public topic `room:<code>`.
 --    The payload is empty; clients react by re-fetching their own filtered view.
 --  * Players are identified by a random secret key generated on the device (only its hash is stored).
+--  * Rows are never removed by game logic: leaving sets players.left_at and finished capture
+--    requests get resolved_at. This keeps full game history (useful for replays and stats).
 
 create schema if not exists private;
 revoke all on schema private from public, anon, authenticated;
@@ -51,8 +53,10 @@ create table if not exists private.players (
   acc integer,
   pos_at timestamptz,
   joined_at timestamptz not null default clock_timestamp(),
+  left_at timestamptz,
   unique (room_code, key_hash)
 );
+alter table private.players add column if not exists left_at timestamptz;
 
 create table if not exists private.track_points (
   id bigint generated always as identity primary key,
@@ -84,8 +88,10 @@ create table if not exists private.capture_requests (
   runner_id uuid not null references private.players (id) on delete cascade,
   expires_at timestamptz not null,
   distance_m integer,
+  resolved_at timestamptz,
   unique (chaser_id, runner_id)
 );
+alter table private.capture_requests add column if not exists resolved_at timestamptz;
 create index if not exists capture_requests_room on private.capture_requests (room_code);
 create index if not exists capture_requests_runner on private.capture_requests (runner_id);
 
@@ -159,7 +165,7 @@ begin
      set phase = 'finished', winner = p_winner, end_reason = p_reason, ended_at = now()
    where code = p_code and phase = 'playing';
   update private.players set violation = false where room_code = p_code;
-  delete from private.capture_requests where room_code = p_code;
+  update private.capture_requests set resolved_at = now() where room_code = p_code and resolved_at is null;
 end $$;
 
 -- Ends the game when time is up. Safe to call any time.
@@ -181,7 +187,7 @@ begin
   perform 1 from private.rooms where code = p_code for update;
   if not found then raise exception 'ルームが見つかりません'; end if;
   perform private.tick(p_code);
-  select * into p from private.players where room_code = p_code and key_hash = private.hash_key(p_key);
+  select * into p from private.players where room_code = p_code and key_hash = private.hash_key(p_key) and left_at is null;
   if not found then raise exception 'ルームに参加していません'; end if;
   return p;
 end $$;
@@ -251,7 +257,7 @@ begin
                  'lat', p.lat, 'lng', p.lng, 't', private.ms(p.pos_at), 'acc', p.acc))
           else '{}'::jsonb end
         order by p.joined_at), '[]'::jsonb)
-      from private.players p where p.room_code = r.code
+      from private.players p where p.room_code = r.code and p.left_at is null
     ),
     'meId', v.id,
     'startedAt', private.ms(r.started_at),
@@ -273,7 +279,7 @@ begin
         'expiresAt', private.ms(c.expires_at), 'distanceM', c.distance_m
       )), '[]'::jsonb)
       from private.capture_requests c
-      where c.room_code = r.code and c.expires_at > now() and r.phase = 'playing'
+      where c.room_code = r.code and c.resolved_at is null and c.expires_at > now() and r.phase = 'playing'
         and (c.runner_id = v.id or c.chaser_id = v.id or v.role = 'chaser')
     ),
     'result', case when r.phase <> 'finished' then null else jsonb_build_object(
@@ -285,7 +291,7 @@ begin
           select coalesce(jsonb_agg(jsonb_build_array(t.lat, t.lng, private.ms(t.t)) order by t.t), '[]'::jsonb)
           from private.track_points t where t.player_id = p.id
         )), '{}'::jsonb)
-        from private.players p where p.room_code = r.code
+        from private.players p where p.room_code = r.code and p.left_at is null
       )
     ) end
   );

@@ -52,7 +52,8 @@ begin
   perform public.update_location(c, k[2], 35.68, 139.76);
   v := public.get_room_view(c, k[2]);
   assert not (v->'room'->'players'->0 ? 'pos'), 'runner hidden while inside';
-  assert v->'room'->'players'->2 ? 'pos', 'chasers see each other';
+  v := public.get_room_view(c, k[3]);
+  assert v->'room'->'players'->1 ? 'pos', 'chasers see each other';
   -- Runners never see chasers.
   v := public.get_room_view(c, k[1]);
   assert not (v->'room'->'players'->1 ? 'pos'), 'chaser hidden from runner';

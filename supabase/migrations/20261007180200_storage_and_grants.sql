@@ -11,10 +11,17 @@ language sql stable security definer set search_path = '' as $$
   select exists (select 1 from private.photos where path = p_name and not uploaded)
 $$;
 
-drop policy if exists "Upload to a reserved selfie slot" on storage.objects;
-create policy "Upload to a reserved selfie slot"
-  on storage.objects for insert to anon, authenticated
-  with check (bucket_id = 'drokei-photos' and private.can_upload_photo(name));
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+     where schemaname = 'storage' and tablename = 'objects' and policyname = 'Upload to a reserved selfie slot'
+  ) then
+    create policy "Upload to a reserved selfie slot"
+      on storage.objects for insert to anon, authenticated
+      with check (bucket_id = 'drokei-photos' and private.can_upload_photo(name));
+  end if;
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- Privileges

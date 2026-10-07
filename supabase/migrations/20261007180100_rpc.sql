@@ -29,14 +29,16 @@ language plpgsql security definer set search_path = '' as $$
 declare
   r private.rooms;
   v_id uuid;
+  v_left timestamptz;
 begin
   select * into r from private.rooms where code = btrim(p_code) for update;
   if not found then raise exception 'ルームが見つかりません'; end if;
   perform private.tick(r.code);
   select * into r from private.rooms where code = r.code;
 
-  select id into v_id from private.players where room_code = r.code and key_hash = private.hash_key(p_key);
-  if v_id is not null then
+  select id, left_at into v_id, v_left
+    from private.players where room_code = r.code and key_hash = private.hash_key(p_key);
+  if v_id is not null and v_left is null then
     if r.phase = 'lobby' then
       update private.players set name = private.clean_name(p_name) where id = v_id;
       perform private.notify(r.code);
@@ -45,18 +47,26 @@ begin
   end if;
 
   if r.phase <> 'lobby' then raise exception 'このルームはすでにゲーム中です'; end if;
-  if (select count(*) from private.players where room_code = r.code) >= 5 then
+  if (select count(*) from private.players where room_code = r.code and left_at is null) >= 5 then
     raise exception 'ルームが満員です（最大5人）';
   end if;
-  insert into private.players (room_code, key_hash, name)
-  values (r.code, private.hash_key(p_key), private.clean_name(p_name))
-  returning id into v_id;
+  if v_id is not null then
+    -- Returning after leaving the lobby: reuse the row as a fresh join.
+    update private.players
+       set left_at = null, name = private.clean_name(p_name), role = null, ready = false,
+           joined_at = clock_timestamp()
+     where id = v_id;
+  else
+    insert into private.players (room_code, key_hash, name)
+    values (r.code, private.hash_key(p_key), private.clean_name(p_name))
+    returning id into v_id;
+  end if;
   if r.host_id is null then update private.rooms set host_id = v_id where code = r.code; end if;
   perform private.notify(r.code);
   return private.respond(r.code, v_id);
 end $$;
 
--- In the lobby the player is removed; mid-game the player stays (presence shows them offline).
+-- In the lobby the player is marked as left; mid-game the player stays (presence shows them offline).
 create or replace function public.leave_room(p_code text, p_key text) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -66,14 +76,11 @@ begin
   p := private.me(p_code, p_key);
   select * into r from private.rooms where code = p_code;
   if r.phase <> 'lobby' then return; end if;
-  delete from private.players where id = p.id;
-  if not exists (select 1 from private.players where room_code = p_code) then
-    delete from private.rooms where code = p_code;
-    return;
-  end if;
+  update private.players set left_at = now(), role = null, ready = false where id = p.id;
   if r.host_id = p.id then
+    -- Next host is the earliest remaining player (null if the room is now empty).
     update private.rooms
-       set host_id = (select id from private.players where room_code = p_code order by joined_at limit 1)
+       set host_id = (select id from private.players where room_code = p_code and left_at is null order by joined_at limit 1)
      where code = p_code;
   end if;
   perform private.notify(p_code);
@@ -101,7 +108,7 @@ begin
   if p_role is not null and p_role not in ('runner', 'chaser') then raise exception '不正な役割です'; end if;
   if p_role is not null and p.role is distinct from p_role then
     cap := case p_role when 'runner' then left(r.team_mode, 1)::int else right(r.team_mode, 1)::int end;
-    if (select count(*) from private.players where room_code = p_code and role = p_role) >= cap then
+    if (select count(*) from private.players where room_code = p_code and role = p_role and left_at is null) >= cap then
       raise exception 'その役割は定員に達しています';
     end if;
   end if;
@@ -139,7 +146,7 @@ begin
      where id in (
        select id from (
          select id, role, row_number() over (partition by role order by joined_at) as n
-           from private.players where room_code = p_code and role is not null
+           from private.players where room_code = p_code and role is not null and left_at is null
        ) x
        where x.n > case x.role when 'runner' then left(p_team_mode, 1)::int else right(p_team_mode, 1)::int end
      );
@@ -192,7 +199,7 @@ begin
   if p.id is distinct from r.host_id then raise exception 'ゲームを開始できるのはホストだけです'; end if;
   select count(*) filter (where role = 'runner'), count(*) filter (where role = 'chaser'), count(*) filter (where not ready)
     into runners, chasers, unready
-    from private.players where room_code = p_code;
+    from private.players where room_code = p_code and left_at is null;
   if r.center_lat is null then raise exception '中心ピンが未設定です'; end if;
   if runners <> left(r.team_mode, 1)::int then raise exception '逃走者を%人にしてください', left(r.team_mode, 1); end if;
   if chasers <> right(r.team_mode, 1)::int then raise exception '追跡者を%人にしてください', right(r.team_mode, 1); end if;
@@ -202,8 +209,8 @@ begin
      set phase = 'playing', started_at = now(), ends_at = now() + make_interval(mins => r.duration_min)
    where code = p_code;
   insert into private.track_points (player_id, lat, lng, t)
-  select id, lat, lng, now() from private.players where room_code = p_code and lat is not null;
-  perform private.refresh_violation(id) from private.players where room_code = p_code;
+  select id, lat, lng, now() from private.players where room_code = p_code and left_at is null and lat is not null;
+  perform private.refresh_violation(id) from private.players where room_code = p_code and left_at is null;
   perform private.notify(p_code);
   return private.respond(p_code, p.id);
 end $$;
@@ -236,7 +243,7 @@ begin
   -- Only teammates (and chasers, while a runner is exposed) can see this update,
   -- but a ping is cheap and keeps every view fresh.
   if now_violation or was_violation <> now_violation or exists (
-    select 1 from private.players where room_code = p_code and role = p.role and id <> p.id
+    select 1 from private.players where room_code = p_code and role = p.role and id <> p.id and left_at is null
   ) then
     perform private.notify(p_code);
   end if;
@@ -251,7 +258,7 @@ begin
   p := private.me(p_code, p_key);
   if (select phase from private.rooms where code = p_code) <> 'playing' then raise exception 'ゲーム中ではありません'; end if;
   if p.role is distinct from 'chaser' then raise exception '確保できるのは追跡者だけです'; end if;
-  select * into runner from private.players where id = p_runner_id and room_code = p_code and role = 'runner';
+  select * into runner from private.players where id = p_runner_id and room_code = p_code and role = 'runner' and left_at is null;
   if not found then raise exception '対象の逃走者が見つかりません'; end if;
   if runner.captured then raise exception 'その逃走者はすでに確保済みです'; end if;
   insert into private.capture_requests (room_code, chaser_id, runner_id, expires_at, distance_m)
@@ -261,7 +268,7 @@ begin
          then round(private.haversine_m(p.lat, p.lng, runner.lat, runner.lng))::int end
   )
   on conflict (chaser_id, runner_id) do update
-    set expires_at = excluded.expires_at, distance_m = excluded.distance_m;
+    set expires_at = excluded.expires_at, distance_m = excluded.distance_m, resolved_at = null;
   perform private.notify(p_code);
   return private.respond(p_code, p.id);
 end $$;
@@ -274,15 +281,15 @@ declare
 begin
   p := private.me(p_code, p_key);
   if (select phase from private.rooms where code = p_code) <> 'playing' then raise exception 'ゲーム中ではありません'; end if;
-  select * into req from private.capture_requests where id = p_request_id and room_code = p_code and expires_at > now();
+  select * into req from private.capture_requests where id = p_request_id and room_code = p_code and resolved_at is null and expires_at > now();
   if not found then raise exception '確保リクエストの期限が切れています'; end if;
   if req.runner_id <> p.id then raise exception 'このリクエストには応答できません'; end if;
   if not p_accept then
-    delete from private.capture_requests where id = req.id;
+    update private.capture_requests set resolved_at = now() where id = req.id;
   else
     update private.players set captured = true, violation = false where id = p.id;
-    delete from private.capture_requests where runner_id = p.id;
-    if not exists (select 1 from private.players where room_code = p_code and role = 'runner' and not captured) then
+    update private.capture_requests set resolved_at = now() where runner_id = p.id and resolved_at is null;
+    if not exists (select 1 from private.players where room_code = p_code and role = 'runner' and not captured and left_at is null) then
       perform private.finish(p_code, 'chaser', 'all_captured');
     end if;
   end if;
