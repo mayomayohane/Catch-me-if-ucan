@@ -11,7 +11,7 @@
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "types": ["node", "vite/client"]
+    "types": ["node", "vite/client", "apple-mapkit-js-browser"]
   },
   "include": ["src", "test", "vite.config.ts"]
 }

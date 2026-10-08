@@ -17,6 +17,7 @@
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
+    "@types/apple-mapkit-js-browser": "^5.78.1",
     "@types/leaflet": "^1.9.22",
     "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",

@@ -17,22 +17,9 @@ import type { RoomView } from '../../shared/protocol.ts';
 import { unlockAudio, type GeoState } from '../device.ts';
 import { MapView, type MapMarker } from '../MapView.tsx';
 import { client } from '../net.ts';
-import { findItemPlaces } from '../places.ts';
+import { findItemPlaces, searchPlaces, type SearchResult } from '../places.ts';
 
 const ROLE_LABEL: Record<Role, string> = { runner: '逃走者', chaser: '追跡者' };
-
-interface SearchResult {
-  name: string;
-  pos: LatLng;
-}
-
-async function searchPlace(q: string): Promise<SearchResult[]> {
-  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&accept-language=ja&q=${encodeURIComponent(q)}`;
-  const res = await fetch(url);
-  if (!res.ok) return [];
-  const rows = (await res.json()) as Array<{ display_name: string; lat: string; lon: string }>;
-  return rows.map((r) => ({ name: r.display_name, pos: { lat: Number(r.lat), lng: Number(r.lon) } }));
-}
 
 export function Lobby({ room, geo }: { room: RoomView; geo: GeoState }) {
   const me = room.players.find((p) => p.id === room.meId)!;
@@ -174,7 +161,7 @@ export function Lobby({ room, geo }: { room: RoomView; geo: GeoState }) {
             onSubmit={async (e) => {
               e.preventDefault();
               if (!query.trim()) return;
-              setResults(await searchPlace(query).catch(() => []));
+              setResults(await searchPlaces(query, settings.center ?? geo.pos).catch(() => []));
             }}
           >
             <input value={query} placeholder="場所を検索（例: 渋谷駅）" onChange={(e) => setQuery(e.target.value)} />
