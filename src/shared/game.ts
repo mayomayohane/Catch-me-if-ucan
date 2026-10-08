@@ -23,6 +23,13 @@ export const DEFAULT_RADIUS_M = 3000;
 export const MIN_RADIUS_M = 500;
 export const MAX_RADIUS_M = 10000;
 export const PHOTO_INTERVAL_MS = 10 * 60 * 1000;
+/** Selfie interval choices in seconds. Anything shorter than 10 min is demo mode. */
+export const PHOTO_INTERVALS_S = [600, 60, 30] as const;
+export const DEFAULT_PHOTO_INTERVAL_S = 600;
+
+export function formatInterval(s: number): string {
+  return s >= 60 ? `${Math.round(s / 60)}分` : `${s}秒`;
+}
 export const CAPTURE_REQUEST_TTL_MS = 60 * 1000;
 
 export interface Settings {
@@ -30,6 +37,8 @@ export interface Settings {
   center: LatLng | null;
   radiusM: number;
   durationMin: DurationMin;
+  /** Seconds between selfie missions (600 normally; shorter in demo mode). */
+  photoIntervalS: number;
 }
 
 export const defaultSettings = (): Settings => ({
@@ -37,6 +46,7 @@ export const defaultSettings = (): Settings => ({
   center: null,
   radiusM: DEFAULT_RADIUS_M,
   durationMin: 30,
+  photoIntervalS: DEFAULT_PHOTO_INTERVAL_S,
 });
 
 const EARTH_RADIUS_M = 6_371_000;

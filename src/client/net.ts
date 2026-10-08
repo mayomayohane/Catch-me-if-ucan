@@ -255,6 +255,7 @@ class GameClient {
           p_center_lng: msg.center?.lng ?? null,
           p_radius_m: msg.radiusM ?? null,
           p_duration_min: msg.durationMin ?? null,
+          p_photo_interval_s: msg.photoIntervalS ?? null,
         });
         break;
       case 'setReady':

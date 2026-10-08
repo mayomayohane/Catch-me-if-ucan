@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { formatClock, haversineM } from '../../shared/game.ts';
+import { formatClock, formatInterval, haversineM } from '../../shared/game.ts';
 import type { PhotoView, RoomView } from '../../shared/protocol.ts';
 import { compressPhoto, useNow, useSiren, useWakeLock, type GeoState } from '../device.ts';
 import { MapView, escapeHtml, type MapMarker } from '../MapView.tsx';
@@ -78,7 +78,7 @@ export function Game({ room, geo, offset }: { room: RoomView; geo: GeoState; off
           <b className="mono">{formatClock((room.endsAt ?? now) - now)}</b>
         </div>
         <div>
-          <small>Next Photo</small>
+          <small>Next Photo{room.settings.photoIntervalS < 600 && <span className="demo-label"> · DEMO {formatInterval(room.settings.photoIntervalS)}</span>}</small>
           <b className="mono">{room.nextMissionAt ? formatClock(room.nextMissionAt - now) : '--:--'}</b>
         </div>
         <div>
@@ -160,7 +160,7 @@ export function Game({ room, geo, offset }: { room: RoomView; geo: GeoState; off
         <div className="sheet-backdrop" onClick={() => setSheet(null)}>
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
             <h3>ヒント写真ログ</h3>
-            {room.photos.length === 0 && <p className="muted">まだ写真はありません。最初の写真は開始10分後です。</p>}
+            {room.photos.length === 0 && <p className="muted">まだ写真はありません。最初の写真は開始{formatInterval(room.settings.photoIntervalS)}後です。</p>}
             <div className="gallery">
               {[...room.photos].reverse().map((ph) => (
                 <figure key={ph.id}>

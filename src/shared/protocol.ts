@@ -69,7 +69,7 @@ export interface RoomView {
 export type ClientMessage =
   | { type: 'leave' }
   | { type: 'setRole'; role: Role | null }
-  | { type: 'setSettings'; teamMode?: TeamMode; center?: LatLng; radiusM?: number; durationMin?: DurationMin }
+  | { type: 'setSettings'; teamMode?: TeamMode; center?: LatLng; radiusM?: number; durationMin?: DurationMin; photoIntervalS?: number }
   | { type: 'setReady'; ready: boolean }
   | { type: 'start' }
   | { type: 'location'; lat: number; lng: number; acc?: number }

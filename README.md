@@ -44,6 +44,7 @@ npm run build          # dist/ を Vercel / Netlify / Cloudflare Pages などに
 | `supabase/migrations/*_schema.sql` | テーブル・ヘルパー・プレイヤー別ビュー |
 | `supabase/migrations/*_rpc.sql` | `create_room` / `join_room` / `set_role` / `set_settings` / `start_game` / `update_location` / `request_capture` / `respond_capture` / `reserve_photo` / `confirm_photo` など |
 | `supabase/migrations/*_storage_and_grants.sql` | 自撮りバケット・Storage ポリシー・実行権限 |
+| `supabase/functions/cleanup/` | 古いルームと写真を削除する Edge Function（pg_cron から毎時呼び出し） |
 | `src/client/net.ts` | RPC 呼び出し、Realtime 購読、写真アップロード |
 | `src/shared/game.ts` | 画面表示用の共通ルール（DB 側と同じ計算） |
 
@@ -67,7 +68,7 @@ npm run build          # dist/ を Vercel / Netlify / Cloudflare Pages などに
 
 ## 既知の制約・次のステップ
 - **バックグラウンド位置取得**: ブラウザは画面オフ中に GPS を止めます。ゲーム中は Wake Lock で画面を点けたままにしていますが、本当のバックグラウンド追跡には Capacitor 等のネイティブラッパーが必要です。
-- **古いデータの掃除**: ゲームのロジックは行を消さず（退出は `left_at`、確保申請は `resolved_at` で記録）、履歴がすべて残ります。終了したルームや写真を一定期間後に削除するジョブ（pg_cron）は未実装です。
+- **古いデータの自動削除**: 最後の操作から24時間たったルームを、写真ファイルごと1時間ごとに削除します（pg_cron → Edge Function `cleanup`）。ゲーム中の処理自体は行を消さず（退出は `left_at`、確保申請は `resolved_at`）、24時間以内は履歴がすべて残ります。保持時間は `supabase/functions/cleanup/index.ts` の `RETENTION_HOURS` で変更できます。
 - **自撮りの公開範囲**: バケットは public（パスは推測不能な UUID）。より厳密にするなら private バケット + 署名付きURL（Edge Function）へ。
 - 地図タイルは OSM 公式サーバー。公開運用時は MapTiler 等への切り替えを推奨。
-- デモ用に `set_settings` の `p_photo_interval_s`（10〜600秒）で自撮り間隔を短縮できます。
+- **デモモード**: ロビーでホストが自撮り間隔を「10分（通常）/ 1分 / 30秒」から選べます。短い間隔のときはロビーとゲーム画面に「デモ」と表示されます。

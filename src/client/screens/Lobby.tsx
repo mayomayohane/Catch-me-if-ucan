@@ -3,6 +3,8 @@ import {
   DURATIONS,
   MAX_RADIUS_M,
   MIN_RADIUS_M,
+  PHOTO_INTERVALS_S,
+  formatInterval,
   TEAM_MODES,
   roleCount,
   startBlockers,
@@ -206,6 +208,21 @@ export function Lobby({ room, geo }: { room: RoomView; geo: GeoState }) {
               onClick={() => client.send({ type: 'setSettings', durationMin: d })}
             >
               <b>{d}分</b>
+            </button>
+          ))}
+        </div>
+
+        <h3>自撮り間隔 {settings.photoIntervalS < 600 && <em className="tag demo">デモモード</em>}</h3>
+        <div className="segmented">
+          {PHOTO_INTERVALS_S.map((s) => (
+            <button
+              key={s}
+              className={s === settings.photoIntervalS ? 'on' : ''}
+              disabled={!isHost}
+              onClick={() => client.send({ type: 'setSettings', photoIntervalS: s })}
+            >
+              <b>{formatInterval(s)}</b>
+              <small>{s === 600 ? '通常' : 'デモ・お試し用'}</small>
             </button>
           ))}
         </div>

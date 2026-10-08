@@ -288,3 +288,7 @@ label.grow { display: flex; flex-direction: column; gap: 4px; font-size: 13px; m
 .playback { margin-top: 10px; }
 .legend { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; }
 .legend i { display: inline-block; width: 12px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+
+/* ---- Demo mode ---- */
+.tag.demo { background: #3a1f4a; color: #e0a8ff; }
+.demo-label { color: #e0a8ff; }
