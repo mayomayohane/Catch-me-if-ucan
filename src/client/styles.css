@@ -316,3 +316,23 @@ label.grow { display: flex; flex-direction: column; gap: 4px; font-size: 13px; m
 .speed { display: flex; gap: 4px; }
 .speed button { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; font-size: 12px; cursor: pointer; }
 .speed button.on { border-color: var(--accent); color: var(--accent); }
+
+/* ---- Items / challenge / sightings ---- */
+.pin-item { background: #2b2f3a; border: 2px solid var(--accent); font-size: 15px; }
+.pin-challenge { background: #ff6a00; border: 2px solid #fff; font-size: 15px; animation: ping 1.4s infinite; }
+.pin-sighting { background: #fff4c2; border: 2px solid #ff3b3b; font-size: 15px; animation: ping 1.2s infinite; }
+.context-actions { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px 0; background: var(--panel); }
+.context-actions .btn { width: 100%; }
+.place-banner { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 12px; background: #3a2d10; color: #ffe08a; font-size: 13px; font-weight: 700; }
+.info-banner { padding: 6px 12px; background: #1f2b3a; color: #b8d4ff; font-size: 12px; text-align: center; }
+.item-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.item-list li { display: flex; gap: 10px; align-items: center; background: var(--panel-2); border-radius: 12px; padding: 10px 12px; }
+.item-list .item-icon { font-size: 26px; }
+.item-list .grow { display: flex; flex-direction: column; gap: 2px; }
+.scoreboard { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.scoreboard li { background: var(--panel-2); border-radius: 12px; padding: 10px 12px; }
+.scoreboard .head { display: flex; align-items: center; gap: 8px; }
+.scoreboard .rank { width: 28px; font-weight: 900; color: var(--muted); }
+.scoreboard .pts { margin-left: auto; font-size: 20px; font-weight: 900; color: var(--accent); }
+.scoreboard .breakdown { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 4px 0 0 36px; font-size: 11px; color: var(--muted); }
+.scoreboard li.mvp { border: 1px solid var(--accent); }

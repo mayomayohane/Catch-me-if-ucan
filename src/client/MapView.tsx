@@ -3,7 +3,7 @@ import 'leaflet/dist/leaflet.css';
 import { useEffect, useRef } from 'react';
 import type { LatLng } from '../shared/game.ts';
 
-export type MarkerKind = 'me' | 'teammate' | 'alert' | 'photo' | 'center' | 'runner' | 'chaser' | 'footprint' | 'nearmiss';
+export type MarkerKind = 'me' | 'teammate' | 'alert' | 'photo' | 'center' | 'runner' | 'chaser' | 'footprint' | 'nearmiss' | 'item' | 'challenge' | 'sighting';
 
 export interface MapMarker {
   id: string;
@@ -46,6 +46,9 @@ const ICONS: Record<MarkerKind, string> = {
   center: '<div class="pin pin-center">📍</div>',
   footprint: '<div class="pin pin-footprint">👣</div>',
   nearmiss: '<div class="pin pin-nearmiss">⚡</div>',
+  item: '<div class="pin pin-item">🎁</div>',
+  challenge: '<div class="pin pin-challenge">🔥</div>',
+  sighting: '<div class="pin pin-sighting">👀</div>',
 };
 
 export function escapeHtml(s: string): string {

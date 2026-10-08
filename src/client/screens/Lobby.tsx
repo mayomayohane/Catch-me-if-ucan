@@ -17,6 +17,7 @@ import type { RoomView } from '../../shared/protocol.ts';
 import { unlockAudio, type GeoState } from '../device.ts';
 import { MapView, type MapMarker } from '../MapView.tsx';
 import { client } from '../net.ts';
+import { findItemPlaces } from '../places.ts';
 
 const ROLE_LABEL: Record<Role, string> = { runner: '逃走者', chaser: '追跡者' };
 
@@ -56,6 +57,31 @@ export function Lobby({ room, geo }: { room: RoomView; geo: GeoState }) {
   const flyTo = (pos: LatLng) => setFocus((f) => ({ pos, seq: (f?.seq ?? 0) + 1 }));
 
   const setCenter = (pos: LatLng) => client.send({ type: 'setSettings', center: pos });
+
+  // Host: whenever the area changes, look up real places (parks, stations...) where items may appear.
+  const [spotSearch, setSpotSearch] = useState<'idle' | 'searching' | 'error'>('idle');
+  const centerKey = settings.center ? `${settings.center.lat},${settings.center.lng},${settings.radiusM}` : '';
+  useEffect(() => {
+    if (!isHost || !settings.center) return;
+    const ctrl = new AbortController();
+    const center = settings.center;
+    const radiusM = settings.radiusM;
+    const t = setTimeout(async () => {
+      setSpotSearch('searching');
+      try {
+        const places = await findItemPlaces(center, radiusM, ctrl.signal);
+        client.send({ type: 'setSpots', spots: places });
+        setSpotSearch('idle');
+      } catch {
+        if (!ctrl.signal.aborted) setSpotSearch('error');
+      }
+    }, 800);
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHost, centerKey]);
 
   const markers = useMemo<MapMarker[]>(() => {
     const out: MapMarker[] = [];
@@ -227,6 +253,19 @@ export function Lobby({ room, geo }: { room: RoomView; geo: GeoState }) {
             </button>
           ))}
         </div>
+
+        <h3>アイテム</h3>
+        <p className="muted small">
+          {!settings.center
+            ? '中心ピンを置くと、エリア内の公園・駅前などからアイテムの出現場所を探します'
+            : spotSearch === 'searching'
+              ? '🔎 アイテムの出現場所を探しています…'
+              : spotSearch === 'error'
+                ? '⚠️ 出現場所を探せませんでした（アイテムなしで遊べます）'
+                : settings.spotCandidates > 0
+                  ? `🎁 出現候補 ${settings.spotCandidates}か所（公園・駅前など）→ ゲーム開始時に🎁最大6個と🔥チャレンジ地点1か所が出現`
+                  : '出現場所が見つかりませんでした（アイテムなしで遊べます）'}
+        </p>
 
         <h3>足跡レーダー <small className="muted">追跡者に逃走者の少し前の移動ルートを表示</small></h3>
         <div className="segmented">

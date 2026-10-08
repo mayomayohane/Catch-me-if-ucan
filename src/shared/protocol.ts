@@ -1,6 +1,6 @@
 // Shapes returned by the Supabase RPCs (see supabase/migrations) and the client's action messages.
 
-import type { DurationMin, LatLng, Phase, Role, Settings, TeamMode } from './game.ts';
+import type { DurationMin, ItemType, LatLng, Phase, Role, Settings, TeamMode } from './game.ts';
 
 export interface PlayerView {
   id: string;
@@ -30,6 +30,30 @@ export interface PhotoView {
   mission: number;
 }
 
+export interface SpotView {
+  id: string;
+  kind: 'item' | 'challenge';
+  lat: number;
+  lng: number;
+  name: string;
+}
+
+/** A "目撃情報" pin. For chasers: radar hit or decoy (indistinguishable). For runners: their own decoys. */
+export interface SightingView {
+  id: string;
+  lat: number;
+  lng: number;
+  name: string;
+  until: number;
+  mine: boolean;
+}
+
+export interface ScoreView {
+  playerId: string;
+  points: number;
+  breakdown: Array<{ label: string; pts: number }>;
+}
+
 export interface CaptureRequestView {
   id: string;
   chaserId: string;
@@ -47,6 +71,8 @@ export interface ResultView {
   reason: 'all_captured' | 'time_up' | 'no_runners';
   tracks: Record<string, TrackPoint[]>;
   endedAt: number;
+  /** Sorted by points, highest first. */
+  scores: ScoreView[];
 }
 
 export interface RoomView {
@@ -64,6 +90,12 @@ export interface RoomView {
   footprints: Record<string, TrackPoint[]>;
   /** Distance band (20/50/100 m) to the nearest opponent, or null when none is that close. */
   proximityM: number | null;
+  /** Untaken item spots and the challenge spot. */
+  spots: SpotView[];
+  myItems: Array<{ id: string; type: ItemType }>;
+  sightings: SightingView[];
+  /** Missions skipped with the 透明化 item. */
+  mySkippedMissions: number[];
   photos: PhotoView[];
   captureRequests: CaptureRequestView[];
   result: ResultView | null;
@@ -75,6 +107,9 @@ export type ClientMessage =
   | { type: 'setRole'; role: Role | null }
   | { type: 'setSettings'; teamMode?: TeamMode; center?: LatLng; radiusM?: number; durationMin?: DurationMin; photoIntervalS?: number }
   | { type: 'setFootprints'; delayS: number; spanS: number }
+  | { type: 'setSpots'; spots: Array<{ lat: number; lng: number; name: string }> }
+  | { type: 'pickupItem'; spotId: string }
+  | { type: 'useItem'; itemId: string; at?: LatLng }
   | { type: 'setReady'; ready: boolean }
   | { type: 'start' }
   | { type: 'location'; lat: number; lng: number; acc?: number }

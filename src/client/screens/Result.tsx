@@ -3,7 +3,7 @@ import { formatClock, nearMisses, positionAt, type LatLng, type NearMiss } from 
 import type { RoomView, TrackPoint } from '../../shared/protocol.ts';
 import { MapView, type MapMarker, type MapTrack } from '../MapView.tsx';
 import { client } from '../net.ts';
-import { photoPopup } from './Game.tsx';
+import { missionLabel, photoPopup } from './Game.tsx';
 
 const RUNNER_COLORS = ['#ff3b3b', '#ff9f1c', '#ff5fa2'];
 const CHASER_COLORS = ['#2f80ff', '#00c2d1', '#7b61ff', '#2ecc71'];
@@ -93,7 +93,7 @@ export function Result({ room }: { room: RoomView }) {
       if (here) markers.push({ id: 'nearmiss', pos: here, kind: 'nearmiss', label: `${focusMiss.distanceM}m!` });
     }
     for (const ph of room.photos) {
-      if (ph.pos && ph.t <= abs) markers.push({ id: ph.id, pos: ph.pos, kind: 'photo', label: `#${ph.mission}`, popupHtml: photoPopup(ph) });
+      if (ph.pos && ph.t <= abs) markers.push({ id: ph.id, pos: ph.pos, kind: 'photo', label: missionLabel(ph.mission), popupHtml: photoPopup(ph) });
     }
     return { tracks, markers };
   }, [t, start, room.players, room.photos, result.tracks, colors, focusMiss]);
@@ -109,6 +109,32 @@ export function Result({ room }: { room: RoomView }) {
         <small>{REASON[result.reason]}</small>
         <h1>{result.winner === 'runner' ? '逃走者勝利！' : '追跡者勝利！'}</h1>
       </div>
+
+      {result.scores?.length > 0 && (
+        <section className="card">
+          <h3>🏆 ポイントランキング</h3>
+          <ol className="scoreboard">
+            {result.scores.map((s, i) => {
+              const p = room.players.find((x) => x.id === s.playerId);
+              return (
+                <li key={s.playerId} className={i === 0 ? 'mvp' : ''}>
+                  <div className="head">
+                    <span className="rank">{i === 0 ? '👑' : `${i + 1}`}</span>
+                    <b>{p?.name ?? '?'}</b>
+                    <span className={`role-chip ${p?.role ?? 'none'}`}>{p?.role === 'runner' ? '逃走者' : '追跡者'}</span>
+                    <span className="pts">{s.points}<small>pt</small></span>
+                  </div>
+                  <div className="breakdown">
+                    {s.breakdown.map((b) => (
+                      <span key={b.label}>{b.label} {b.pts > 0 ? `+${b.pts}` : b.pts}</span>
+                    ))}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      )}
 
       <section className="card">
         <h3>プレイバック</h3>
@@ -167,7 +193,7 @@ export function Result({ room }: { room: RoomView }) {
           {room.photos.map((ph) => (
             <figure key={ph.id}>
               <a href={ph.url} target="_blank" rel="noreferrer"><img src={ph.url} alt="" loading="lazy" /></a>
-              <figcaption>{ph.playerName} · #{ph.mission}</figcaption>
+              <figcaption>{ph.playerName} · {missionLabel(ph.mission)}</figcaption>
             </figure>
           ))}
         </div>

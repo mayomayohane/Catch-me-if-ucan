@@ -155,11 +155,11 @@ class GameClient {
     }, REFRESH_DEBOUNCE_MS);
   };
 
-  /** Time-based transitions (next selfie mission, game end, capture expiry) have no ping; refetch at that moment. */
+  /** Time-based transitions (next selfie mission, game end, capture or sighting expiry) have no ping; refetch at that moment. */
   private scheduleEventRefresh(room: RoomView, serverNow: number) {
     clearTimeout(this.eventTimer);
     if (room.phase !== 'playing') return;
-    const times = [room.nextMissionAt, room.endsAt, ...room.captureRequests.map((c) => c.expiresAt)]
+    const times = [room.nextMissionAt, room.endsAt, ...room.captureRequests.map((c) => c.expiresAt), ...room.sightings.map((s) => s.until)]
       .filter((t): t is number => t !== null && t > serverNow);
     if (!times.length) return;
     const wait = Math.min(...times) - serverNow + 300;
@@ -260,6 +260,15 @@ class GameClient {
         break;
       case 'setFootprints':
         call = this.rpc('set_footprints', { ...base, p_delay_s: msg.delayS, p_span_s: msg.spanS });
+        break;
+      case 'setSpots':
+        call = this.rpc('set_spots', { ...base, p_spots: msg.spots });
+        break;
+      case 'pickupItem':
+        call = this.rpc('pickup_item', { ...base, p_spot_id: msg.spotId });
+        break;
+      case 'useItem':
+        call = this.rpc('use_item', { ...base, p_item_id: msg.itemId, p_lat: msg.at?.lat ?? null, p_lng: msg.at?.lng ?? null });
         break;
       case 'setReady':
         call = this.rpc('set_ready', { ...base, p_ready: msg.ready });

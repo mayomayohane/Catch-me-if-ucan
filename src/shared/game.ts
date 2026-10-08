@@ -42,6 +42,8 @@ export interface Settings {
   /** Footprint radar window: runners' trail from (delay + span) to delay seconds ago; span 0 = off. */
   footprintDelayS: number;
   footprintSpanS: number;
+  /** How many candidate places (parks, stations...) the host found for items. */
+  spotCandidates: number;
 }
 
 export const defaultSettings = (): Settings => ({
@@ -52,6 +54,7 @@ export const defaultSettings = (): Settings => ({
   photoIntervalS: DEFAULT_PHOTO_INTERVAL_S,
   footprintDelayS: 300,
   footprintSpanS: 600,
+  spotCandidates: 0,
 });
 
 const EARTH_RADIUS_M = 6_371_000;
@@ -222,3 +225,29 @@ export function nearMisses(
   }
   return picked.sort((a, b) => a.t - b.t);
 }
+
+// ---- Items & points --------------------------------------------------------
+
+/** Walk within this distance of an item / challenge spot to use it (checked on the server too). */
+export const SPOT_RADIUS_M = 40;
+
+export type ItemType = 'invisible' | 'decoy' | 'radar';
+
+export const ITEM_INFO: Record<ItemType, { icon: string; name: string; desc: string }> = {
+  invisible: { icon: '🫥', name: '透明化', desc: '次の自撮りミッションを1回スキップできる' },
+  decoy: { icon: '👣', name: '偽の足跡', desc: '地図の好きな場所に「目撃情報」を5分間出して追跡者を惑わせる' },
+  radar: { icon: '📡', name: '10秒GPSレーダー', desc: '逃走者全員の現在地を10秒間マップに表示する' },
+};
+
+/** Mirrors the scoring in supabase/migrations/*_view_items_points.sql (for the rules screen). */
+export const POINTS = {
+  perMinuteAlive: 1,
+  selfie: 5,
+  escape: 30,
+  challengeMultiplier: 3,
+  capture: 50,
+  chaserWin: 20,
+} as const;
+
+/** Mission number used for the 🔥 challenge selfie. */
+export const CHALLENGE_MISSION = 0;
