@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   DURATIONS,
   MAX_RADIUS_M,
+  FOOTPRINT_PRESETS,
   MIN_RADIUS_M,
   PHOTO_INTERVALS_S,
   formatInterval,
@@ -223,6 +224,21 @@ export function Lobby({ room, geo }: { room: RoomView; geo: GeoState }) {
             >
               <b>{formatInterval(s)}</b>
               <small>{s === 600 ? '通常' : 'デモ・お試し用'}</small>
+            </button>
+          ))}
+        </div>
+
+        <h3>足跡レーダー <small className="muted">追跡者に逃走者の少し前の移動ルートを表示</small></h3>
+        <div className="segmented">
+          {FOOTPRINT_PRESETS.map((f) => (
+            <button
+              key={f.key}
+              className={f.delayS === settings.footprintDelayS && f.spanS === settings.footprintSpanS ? 'on' : ''}
+              disabled={!isHost}
+              onClick={() => client.send({ type: 'setFootprints', delayS: f.delayS, spanS: f.spanS })}
+            >
+              <b>{f.label}</b>
+              <small>{f.desc}</small>
             </button>
           ))}
         </div>

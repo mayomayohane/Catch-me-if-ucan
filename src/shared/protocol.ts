@@ -60,6 +60,10 @@ export interface RoomView {
   nextMissionAt: number | null;
   /** 1-based mission numbers the viewer (a runner) still has to submit. */
   myPendingMissions: number[];
+  /** Runners' delayed trails (footprint radar), keyed by player id. Never the live position. */
+  footprints: Record<string, TrackPoint[]>;
+  /** Distance band (20/50/100 m) to the nearest opponent, or null when none is that close. */
+  proximityM: number | null;
   photos: PhotoView[];
   captureRequests: CaptureRequestView[];
   result: ResultView | null;
@@ -70,6 +74,7 @@ export type ClientMessage =
   | { type: 'leave' }
   | { type: 'setRole'; role: Role | null }
   | { type: 'setSettings'; teamMode?: TeamMode; center?: LatLng; radiusM?: number; durationMin?: DurationMin; photoIntervalS?: number }
+  | { type: 'setFootprints'; delayS: number; spanS: number }
   | { type: 'setReady'; ready: boolean }
   | { type: 'start' }
   | { type: 'location'; lat: number; lng: number; acc?: number }

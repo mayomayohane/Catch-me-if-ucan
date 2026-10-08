@@ -292,3 +292,27 @@ label.grow { display: flex; flex-direction: column; gap: 4px; font-size: 13px; m
 /* ---- Demo mode ---- */
 .tag.demo { background: #3a1f4a; color: #e0a8ff; }
 .demo-label { color: #e0a8ff; }
+
+/* ---- Footprints / proximity / near-miss ---- */
+.pin-footprint { background: rgba(255, 59, 59, .25); border: 2px dashed rgba(255, 120, 120, .9); font-size: 14px; }
+.pin-nearmiss { background: var(--accent); font-size: 15px; animation: ping 1s infinite; }
+.proximity-banner {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 8px 12px; font-weight: 800; color: #fff;
+  background: linear-gradient(90deg, #5a0f2a, #8a1238, #5a0f2a);
+}
+.proximity-banner .heart { display: inline-block; animation: heartbeat var(--beat, 1.2s) infinite; }
+.proximity-banner.b50 { background: linear-gradient(90deg, #7a0f2a, #b0123f, #7a0f2a); }
+.proximity-banner.b20 { background: linear-gradient(90deg, #a00f1f, #e0102f, #a00f1f); }
+@keyframes heartbeat { 0%, 40%, 100% { transform: scale(1); } 10% { transform: scale(1.35); } 25% { transform: scale(1.15); } }
+.footprint-note { font-size: 11px; color: var(--muted); text-align: center; padding: 4px; background: var(--panel); }
+.nearmiss-list { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-direction: column; gap: 6px; }
+.nearmiss-list button {
+  width: 100%; display: flex; gap: 10px; align-items: center; text-align: left; cursor: pointer;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 13px;
+}
+.nearmiss-list button.on { border-color: var(--accent); }
+.nearmiss-list .dist { margin-left: auto; font-weight: 800; color: var(--accent); }
+.speed { display: flex; gap: 4px; }
+.speed button { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; font-size: 12px; cursor: pointer; }
+.speed button.on { border-color: var(--accent); color: var(--accent); }

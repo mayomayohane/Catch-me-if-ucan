@@ -258,6 +258,9 @@ class GameClient {
           p_photo_interval_s: msg.photoIntervalS ?? null,
         });
         break;
+      case 'setFootprints':
+        call = this.rpc('set_footprints', { ...base, p_delay_s: msg.delayS, p_span_s: msg.spanS });
+        break;
       case 'setReady':
         call = this.rpc('set_ready', { ...base, p_ready: msg.ready });
         break;

@@ -10,6 +10,9 @@ import {
   nextMissionAt,
   startBlockers,
   defaultSettings,
+  nearMisses,
+  positionAt,
+  proximityBand,
 } from '../src/shared/game.ts';
 
 const TOKYO_STATION = { lat: 35.681236, lng: 139.767125 };
@@ -62,4 +65,37 @@ test('formatClock', () => {
   assert.equal(formatClock(28 * 60_000 + 45_000), '28:45');
   assert.equal(formatClock(-5), '00:00');
   assert.equal(formatClock(75_000), '01:15');
+});
+
+test('proximity bands', () => {
+  assert.equal(proximityBand(null), null);
+  assert.equal(proximityBand(15), 20);
+  assert.equal(proximityBand(20), 20);
+  assert.equal(proximityBand(49), 50);
+  assert.equal(proximityBand(100), 100);
+  assert.equal(proximityBand(101), null);
+});
+
+test('positionAt interpolates and clamps', () => {
+  const track = [[35, 139, 1000], [35.002, 139.002, 3000]] as const;
+  assert.equal(positionAt(track, 999), null);
+  const mid = positionAt(track, 2000)!;
+  assert.ok(Math.abs(mid.lat - 35.001) < 1e-9 && Math.abs(mid.lng - 139.001) < 1e-9);
+  assert.deepEqual(positionAt(track, 9999), { lat: 35.002, lng: 139.002 });
+  assert.equal(positionAt([], 0), null);
+});
+
+test('nearMisses finds the closest separate encounters', () => {
+  const MIN = 60_000;
+  const base = { lat: 35.68, lng: 139.76 };
+  // Runner walks north; chaser walks south along a parallel street ~30 m east, so they pass at t=10 min.
+  const runner = [[base.lat - 0.01, base.lng, 0], [base.lat + 0.01, base.lng, 20 * MIN]] as const;
+  const chaser = [[base.lat + 0.01, base.lng + 0.0003, 0], [base.lat - 0.01, base.lng + 0.0003, 20 * MIN]] as const;
+  // A second chaser far away never gets close.
+  const far = [[base.lat, base.lng + 0.05, 0], [base.lat, base.lng + 0.05, 20 * MIN]] as const;
+  const misses = nearMisses([{ id: 'r', track: runner }], [{ id: 'c', track: chaser }, { id: 'far', track: far }]);
+  assert.equal(misses.length, 1);
+  assert.equal(misses[0].chaserId, 'c');
+  assert.ok(Math.abs(misses[0].t - 10 * MIN) <= 5000, `t=${misses[0].t}`);
+  assert.ok(misses[0].distanceM >= 25 && misses[0].distanceM <= 35, `d=${misses[0].distanceM}`);
 });

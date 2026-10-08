@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { formatClock, type LatLng } from '../../shared/game.ts';
+import { formatClock, nearMisses, positionAt, type LatLng, type NearMiss } from '../../shared/game.ts';
 import type { RoomView, TrackPoint } from '../../shared/protocol.ts';
 import { MapView, type MapMarker, type MapTrack } from '../MapView.tsx';
 import { client } from '../net.ts';
@@ -14,9 +14,18 @@ const REASON: Record<string, string> = {
   no_runners: '逃走者がいなくなりました',
 };
 
-/** Track points recorded up to time t. */
+/** Replay speeds (× real time). */
+const SPEEDS = [30, 60, 120] as const;
+const TICK_MS = 50;
+/** Start a near-miss replay this long before the closest moment. */
+const NEAR_MISS_LEAD_MS = 20_000;
+
+/** Track up to time t, ending exactly at the interpolated position so the line meets the marker. */
 function upTo(track: TrackPoint[], t: number): LatLng[] {
-  return track.filter((p) => p[2] <= t).map(([lat, lng]) => ({ lat, lng }));
+  const pts = track.filter((p) => p[2] <= t).map(([lat, lng]) => ({ lat, lng }));
+  const here = positionAt(track, t);
+  if (here && pts.length) pts.push(here);
+  return pts;
 }
 
 export function Result({ room }: { room: RoomView }) {
@@ -25,21 +34,38 @@ export function Result({ room }: { room: RoomView }) {
   const span = Math.max(1, result.endedAt - start);
   const [t, setT] = useState(span);
   const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(60);
+  const [focusMiss, setFocusMiss] = useState<NearMiss | null>(null);
 
   useEffect(() => {
     if (!playing) return;
     const id = setInterval(() => {
       setT((cur) => {
-        const next = cur + span / 200; // whole game in ~10s
+        const next = cur + TICK_MS * speed;
         if (next >= span) {
           setPlaying(false);
           return span;
         }
         return next;
       });
-    }, 50);
+    }, TICK_MS);
     return () => clearInterval(id);
-  }, [playing, span]);
+  }, [playing, span, speed]);
+
+  // "スレスレ" moments: closest runner–chaser encounters, auto-detected from the tracks.
+  const misses = useMemo(() => {
+    const pick = (role: 'runner' | 'chaser') =>
+      room.players.filter((p) => p.role === role).map((p) => ({ id: p.id, track: result.tracks[p.id] ?? [] }));
+    return nearMisses(pick('runner'), pick('chaser'));
+  }, [room.players, result.tracks]);
+  const nameOf = (id: string) => room.players.find((p) => p.id === id)?.name ?? '?';
+
+  const playMiss = (m: NearMiss) => {
+    setFocusMiss(m);
+    setT(Math.max(0, m.t - start - NEAR_MISS_LEAD_MS));
+    setSpeed(30);
+    setPlaying(true);
+  };
 
   const colors = useMemo(() => {
     const map: Record<string, string> = {};
@@ -56,16 +82,21 @@ export function Result({ room }: { room: RoomView }) {
     const tracks: MapTrack[] = [];
     const markers: MapMarker[] = [];
     for (const p of room.players) {
-      const pts = upTo(result.tracks[p.id] ?? [], abs);
-      tracks.push({ id: p.id, color: colors[p.id], points: pts });
-      const last = pts[pts.length - 1];
-      if (last) markers.push({ id: p.id, pos: last, kind: p.role === 'runner' ? 'runner' : 'chaser', label: p.name });
+      const track = result.tracks[p.id] ?? [];
+      tracks.push({ id: p.id, color: colors[p.id], points: upTo(track, abs) });
+      const here = positionAt(track, abs);
+      if (here) markers.push({ id: p.id, pos: here, kind: p.role === 'runner' ? 'runner' : 'chaser', label: p.name });
+    }
+    // Mark the near-miss spot once the replay reaches it.
+    if (focusMiss && abs >= focusMiss.t - 1000) {
+      const here = positionAt(result.tracks[focusMiss.runnerId] ?? [], focusMiss.t);
+      if (here) markers.push({ id: 'nearmiss', pos: here, kind: 'nearmiss', label: `${focusMiss.distanceM}m!` });
     }
     for (const ph of room.photos) {
       if (ph.pos && ph.t <= abs) markers.push({ id: ph.id, pos: ph.pos, kind: 'photo', label: `#${ph.mission}`, popupHtml: photoPopup(ph) });
     }
     return { tracks, markers };
-  }, [t, start, room.players, room.photos, result.tracks, colors]);
+  }, [t, start, room.players, room.photos, result.tracks, colors, focusMiss]);
 
   const area = useMemo(
     () => (room.settings.center ? { center: room.settings.center, radiusM: room.settings.radiusM } : null),
@@ -92,9 +123,33 @@ export function Result({ room }: { room: RoomView }) {
           >
             {playing ? '⏸' : '▶'}
           </button>
-          <input className="grow" type="range" min={0} max={span} value={t} onChange={(e) => (setPlaying(false), setT(Number(e.target.value)))} />
+          <input className="grow" type="range" min={0} max={span} value={t} onChange={(e) => (setPlaying(false), setFocusMiss(null), setT(Number(e.target.value)))} />
           <span className="mono small">{formatClock(t)}</span>
         </div>
+        <div className="row playback">
+          <span className="muted small">再生速度</span>
+          <div className="speed">
+            {SPEEDS.map((s) => (
+              <button key={s} className={s === speed ? 'on' : ''} onClick={() => setSpeed(s)}>×{s}</button>
+            ))}
+          </div>
+        </div>
+        {misses.length > 0 && (
+          <>
+            <h3>⚡ ニアミス</h3>
+            <ul className="nearmiss-list">
+              {misses.map((m) => (
+                <li key={`${m.runnerId}-${m.chaserId}-${m.t}`}>
+                  <button className={focusMiss === m ? 'on' : ''} onClick={() => playMiss(m)}>
+                    <span className="mono">{formatClock(m.t - start)}</span>
+                    <span>{nameOf(m.runnerId)} × {nameOf(m.chaserId)}</span>
+                    <span className="dist">{m.distanceM}m</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
         <ul className="legend">
           {room.players.map((p) => (
             <li key={p.id}>

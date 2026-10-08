@@ -39,6 +39,9 @@ export interface Settings {
   durationMin: DurationMin;
   /** Seconds between selfie missions (600 normally; shorter in demo mode). */
   photoIntervalS: number;
+  /** Footprint radar window: runners' trail from (delay + span) to delay seconds ago; span 0 = off. */
+  footprintDelayS: number;
+  footprintSpanS: number;
 }
 
 export const defaultSettings = (): Settings => ({
@@ -47,6 +50,8 @@ export const defaultSettings = (): Settings => ({
   radiusM: DEFAULT_RADIUS_M,
   durationMin: 30,
   photoIntervalS: DEFAULT_PHOTO_INTERVAL_S,
+  footprintDelayS: 300,
+  footprintSpanS: 600,
 });
 
 const EARTH_RADIUS_M = 6_371_000;
@@ -124,4 +129,96 @@ export function formatClock(ms: number): string {
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+// ---- Footprints (radar) ----------------------------------------------------
+
+/** Chasers see where runners were between (delay + span) and delay seconds ago. */
+export const FOOTPRINT_PRESETS = [
+  { key: 'normal', label: '5〜15分前', desc: '通常', delayS: 300, spanS: 600 },
+  { key: 'demo', label: '1〜3分前', desc: 'デモ・お試し用', delayS: 60, spanS: 120 },
+  { key: 'off', label: 'なし', desc: '足跡を出さない', delayS: 0, spanS: 0 },
+] as const;
+
+// ---- Proximity alert -------------------------------------------------------
+
+/** Distance bands (meters) reported by the server; GPS noise makes finer steps meaningless. */
+export const PROXIMITY_BANDS_M = [20, 50, 100] as const;
+export type ProximityBand = (typeof PROXIMITY_BANDS_M)[number];
+
+/** Heartbeat period per band: the closer, the faster. */
+export const HEARTBEAT_MS: Record<ProximityBand, number> = { 100: 1200, 50: 800, 20: 480 };
+
+export function proximityBand(distanceM: number | null): ProximityBand | null {
+  if (distanceM === null || !Number.isFinite(distanceM)) return null;
+  return PROXIMITY_BANDS_M.find((b) => distanceM <= b) ?? null;
+}
+
+// ---- Replay ----------------------------------------------------------------
+
+/** [lat, lng, timestamp ms], sorted by time. */
+export type Track = ReadonlyArray<readonly [number, number, number]>;
+
+/** Position at time t, linearly interpolated. Null before the first point; the last point after the end. */
+export function positionAt(track: Track, t: number): LatLng | null {
+  if (!track.length || t < track[0][2]) return null;
+  let lo = 0;
+  let hi = track.length - 1;
+  if (t >= track[hi][2]) return { lat: track[hi][0], lng: track[hi][1] };
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (track[mid][2] <= t) lo = mid;
+    else hi = mid;
+  }
+  const [aLat, aLng, aT] = track[lo];
+  const [bLat, bLng, bT] = track[hi];
+  const f = bT === aT ? 0 : (t - aT) / (bT - aT);
+  return { lat: aLat + (bLat - aLat) * f, lng: aLng + (bLng - aLng) * f };
+}
+
+export interface NearMiss {
+  runnerId: string;
+  chaserId: string;
+  t: number;
+  distanceM: number;
+}
+
+/**
+ * Finds the closest runner–chaser encounters for the replay ("スレスレ" moments).
+ * Samples every pair every `stepMs`, keeps local minima under `maxDistanceM`, then picks the
+ * closest ones at least `minGapMs` apart so the highlights are different scenes.
+ */
+export function nearMisses(
+  runners: Array<{ id: string; track: Track }>,
+  chasers: Array<{ id: string; track: Track }>,
+  { stepMs = 5000, maxDistanceM = 200, minGapMs = 60_000, limit = 3 } = {},
+): NearMiss[] {
+  const candidates: NearMiss[] = [];
+  for (const r of runners) {
+    for (const c of chasers) {
+      if (!r.track.length || !c.track.length) continue;
+      const from = Math.max(r.track[0][2], c.track[0][2]);
+      const to = Math.min(r.track[r.track.length - 1][2], c.track[c.track.length - 1][2]);
+      const samples: Array<{ t: number; d: number }> = [];
+      for (let t = from; t <= to; t += stepMs) {
+        const a = positionAt(r.track, t);
+        const b = positionAt(c.track, t);
+        if (a && b) samples.push({ t, d: haversineM(a, b) });
+      }
+      samples.forEach((s, i) => {
+        const prev = samples[i - 1]?.d ?? Infinity;
+        const next = samples[i + 1]?.d ?? Infinity;
+        if (s.d <= maxDistanceM && s.d <= prev && s.d < next) {
+          candidates.push({ runnerId: r.id, chaserId: c.id, t: s.t, distanceM: Math.round(s.d) });
+        }
+      });
+    }
+  }
+  candidates.sort((a, b) => a.distanceM - b.distanceM || a.t - b.t);
+  const picked: NearMiss[] = [];
+  for (const m of candidates) {
+    if (picked.length >= limit) break;
+    if (picked.every((p) => Math.abs(p.t - m.t) >= minGapMs)) picked.push(m);
+  }
+  return picked.sort((a, b) => a.t - b.t);
 }

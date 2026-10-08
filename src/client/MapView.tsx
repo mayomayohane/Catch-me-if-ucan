@@ -3,7 +3,7 @@ import 'leaflet/dist/leaflet.css';
 import { useEffect, useRef } from 'react';
 import type { LatLng } from '../shared/game.ts';
 
-export type MarkerKind = 'me' | 'teammate' | 'alert' | 'photo' | 'center' | 'runner' | 'chaser';
+export type MarkerKind = 'me' | 'teammate' | 'alert' | 'photo' | 'center' | 'runner' | 'chaser' | 'footprint' | 'nearmiss';
 
 export interface MapMarker {
   id: string;
@@ -18,6 +18,8 @@ export interface MapTrack {
   id: string;
   color: string;
   points: LatLng[];
+  /** Faint dashed line, used for footprints. */
+  faint?: boolean;
 }
 
 interface Props {
@@ -42,6 +44,8 @@ const ICONS: Record<MarkerKind, string> = {
   alert: '<div class="pin pin-alert"><span>!</span></div>',
   photo: '<div class="pin pin-photo">📷</div>',
   center: '<div class="pin pin-center">📍</div>',
+  footprint: '<div class="pin pin-footprint">👣</div>',
+  nearmiss: '<div class="pin pin-nearmiss">⚡</div>',
 };
 
 export function escapeHtml(s: string): string {
@@ -103,7 +107,12 @@ export function MapView({ area, markers = [], tracks = [], onTap, fitKey, initia
     }
     for (const t of tracks) {
       if (t.points.length > 1) {
-        L.polyline(t.points.map((p) => [p.lat, p.lng] as [number, number]), { color: t.color, weight: 4, opacity: 0.85 }).addTo(g);
+        L.polyline(
+          t.points.map((p) => [p.lat, p.lng] as [number, number]),
+          t.faint
+            ? { color: t.color, weight: 3, opacity: 0.45, dashArray: '2 8', lineCap: 'round' }
+            : { color: t.color, weight: 4, opacity: 0.85 },
+        ).addTo(g);
       }
     }
     for (const mk of markers) {

@@ -174,3 +174,41 @@ export async function compressPhoto(file: File, maxSide = 1024, quality = 0.75):
   bitmap.close();
   return canvas.toDataURL('image/jpeg', quality);
 }
+
+// ---- Heartbeat (proximity alert) -------------------------------------------
+
+/** One "ドックン": a strong low thump followed by a softer one. */
+function thump(ctx: AudioContext, at: number, gainPeak: number) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(70, at);
+  osc.frequency.exponentialRampToValueAtTime(40, at + 0.12);
+  gain.gain.setValueAtTime(0.0001, at);
+  gain.gain.exponentialRampToValueAtTime(gainPeak, at + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.14);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(at);
+  osc.stop(at + 0.16);
+}
+
+/**
+ * Plays a heartbeat while an opponent is within `periodMs`'s band; faster when closer.
+ * Vibrates where supported (Android). iPhone browsers cannot vibrate, so sound carries it there.
+ */
+export function useHeartbeat(periodMs: number | null, muted: boolean) {
+  useEffect(() => {
+    if (!periodMs) return;
+    const beat = () => {
+      navigator.vibrate?.([70, 110, 50]);
+      if (muted || !audio) return;
+      const t = audio.currentTime + 0.01;
+      thump(audio, t, 0.9);
+      thump(audio, t + 0.18, 0.5);
+    };
+    unlockAudio();
+    beat();
+    const id = setInterval(beat, periodMs);
+    return () => clearInterval(id);
+  }, [periodMs, muted]);
+}

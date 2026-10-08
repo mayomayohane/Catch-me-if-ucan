@@ -1,8 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
-import { formatClock, formatInterval, haversineM } from '../../shared/game.ts';
+import { HEARTBEAT_MS, formatClock, formatInterval, haversineM, proximityBand } from '../../shared/game.ts';
 import type { PhotoView, RoomView } from '../../shared/protocol.ts';
-import { compressPhoto, useNow, useSiren, useWakeLock, type GeoState } from '../device.ts';
-import { MapView, escapeHtml, type MapMarker } from '../MapView.tsx';
+import { compressPhoto, useHeartbeat, useNow, useSiren, useWakeLock, type GeoState } from '../device.ts';
+import { MapView, escapeHtml, type MapMarker, type MapTrack } from '../MapView.tsx';
 import { client } from '../net.ts';
 
 const timeOf = (t: number) => new Date(t).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
@@ -28,6 +28,8 @@ export function Game({ room, geo, offset }: { room: RoomView; geo: GeoState; off
 
   useWakeLock(true);
   useSiren(isChaser && violators.length > 0 && !muted);
+  const band = proximityBand(room.proximityM);
+  useHeartbeat(band ? HEARTBEAT_MS[band] : null, muted);
 
   const pendingMission = room.myPendingMissions[0];
   const incomingCapture = room.captureRequests.find((r) => r.runnerId === me.id);
@@ -45,10 +47,30 @@ export function Game({ room, geo, offset }: { room: RoomView; geo: GeoState; off
         if (ph.pos) out.push({ id: ph.id, pos: ph.pos, kind: 'photo', label: `#${ph.mission}`, popupHtml: photoPopup(ph) });
       }
     }
+    // Footprint radar: the newest delayed point gets a 👣 pin with how old it is.
+    for (const [id, pts] of Object.entries(room.footprints)) {
+      const last = pts[pts.length - 1];
+      if (!last) continue;
+      const who = id === me.id ? '自分' : (room.players.find((p) => p.id === id)?.name ?? '逃走者');
+      const minsAgo = Math.max(1, Math.round((now - last[2]) / 60_000));
+      out.push({ id: `fp-${id}`, pos: { lat: last[0], lng: last[1] }, kind: 'footprint', label: `${who} ${minsAgo}分前` });
+    }
     const myPos = geo.pos ?? me.pos;
     if (myPos) out.push({ id: 'me', pos: myPos, kind: 'me' });
     return out;
-  }, [room.players, room.photos, me.id, me.role, me.pos, isChaser, geo.pos]);
+    // `now` only matters for the "n分前" label; recompute at most every 30 s.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.players, room.photos, room.footprints, me.id, me.role, me.pos, isChaser, geo.pos, Math.floor(now / 30_000)]);
+
+  const footprintTracks = useMemo<MapTrack[]>(
+    () => Object.entries(room.footprints).map(([id, pts]) => ({
+      id: `fp-${id}`,
+      color: '#ff5a5a',
+      faint: true,
+      points: pts.map(([lat, lng]) => ({ lat, lng })),
+    })),
+    [room.footprints],
+  );
 
   const area = useMemo(
     () => (room.settings.center ? { center: room.settings.center, radiusM: room.settings.radiusM } : null),
@@ -90,10 +112,15 @@ export function Game({ room, geo, offset }: { room: RoomView; geo: GeoState; off
       <div className={`role-banner ${me.role}`}>
         あなたは<b>{isChaser ? '追跡者' : '逃走者'}</b>
         {me.captured && ' — 確保されました（観戦中）'}
-        {isChaser && violators.length > 0 && (
-          <button className="btn ghost small" onClick={() => setMuted((m) => !m)}>{muted ? '🔇 消音中' : '🔊 消音'}</button>
-        )}
+        <button className="btn ghost small" onClick={() => setMuted((m) => !m)}>{muted ? '🔇 音オフ' : '🔊 音オン'}</button>
       </div>
+
+      {band && (
+        <div className={`proximity-banner b${band}`} style={{ ['--beat' as string]: `${HEARTBEAT_MS[band]}ms` }}>
+          <span className="heart">💓</span>
+          {band}m以内に{isChaser ? '逃走者' : '追跡者'}がいる…！
+        </div>
+      )}
 
       {isChaser && violators.length > 0 && (
         <div className="alert-banner">🚨 エリア外: {violators.map((v) => v.name).join('、')} の現在地を公開中</div>
@@ -101,7 +128,14 @@ export function Game({ room, geo, offset }: { room: RoomView; geo: GeoState; off
       {myViolation && <div className="alert-banner">⚠️ エリア外です！追跡者に現在地が公開されています。すぐに戻ってください</div>}
       {geo.error && <div className="warn-banner">{geo.error}</div>}
 
-      <MapView className="game-map" area={area} markers={markers} fitKey="game" initialCenter={room.settings.center} />
+      <MapView className="game-map" area={area} markers={markers} tracks={footprintTracks} fitKey="game" initialCenter={room.settings.center} />
+      {room.settings.footprintSpanS > 0 && (
+        <div className="footprint-note">
+          👣 足跡レーダー: 逃走者の{Math.round(room.settings.footprintDelayS / 60)}〜
+          {Math.round((room.settings.footprintDelayS + room.settings.footprintSpanS) / 60)}分前の移動
+          {isChaser ? 'を表示中' : 'が追跡者に見えています'}
+        </div>
+      )}
 
       <div className="actions">
         {me.role === 'runner' && !me.captured && (
